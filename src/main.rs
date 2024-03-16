@@ -14,7 +14,7 @@ use faster_paths::{
     graphs::{
         graph::Graph,
         graph_factory::GraphFactory,
-        path::{PathFinding, ShortestPathRequest},
+        path::{PathFinding, ShortestPathRequest, ShortestPathValidation},
     },
     simple_algorithms::slow_dijkstra::SlowDijkstra,
 };
@@ -62,19 +62,22 @@ async fn main() {
         args.co_path.as_str(),
     ));
 
-    let reader = BufReader::new(File::open(args.ch_path).unwrap());
-    let ch_information: ContractedGraphInformation = bincode::deserialize_from(reader).unwrap();
-
-    let shortcut_replacer: Box<dyn ShortcutReplacer + Send + Sync> =
-        Box::new(SlowShortcutReplacer::new(&ch_information.shortcuts));
-
     let path_finding_graph = GraphFactory::from_gr_file(args.gr_path.as_str());
 
-    let path_finder = SlowDijkstra::new(&path_finding_graph);
+    let reader = BufReader::new(File::open(args.ch_path).unwrap());
+    let ch_information: ContractedGraphInformation = bincode::deserialize_from(reader).unwrap();
+    let shortcut_replacer: Box<dyn ShortcutReplacer + Send + Sync> =
+        Box::new(SlowShortcutReplacer::new(&ch_information.shortcuts));
+    let ch_path_finder = ChPathFinder::new(ch_information.ch_graph, shortcut_replacer);
+    let ch_path_finder: Arc<Box<dyn PathFinding>> = Arc::new(Box::new(ch_path_finder));
 
-    // let path_finder = ChPathFinder::new(&ch_information.ch_graph, &shortcut_replacer);
+    let slow_dijkstra = SlowDijkstra::new(path_finding_graph);
+    let slow_dijkstra: Arc<Box<dyn PathFinding>> = Arc::new(Box::new(slow_dijkstra));
 
-    let path_finder: Arc<dyn PathFinding + Sync + Send> = Arc::new(path_finder);
+    let path_finding_graph = Arc::new(GraphFactory::from_gr_file(args.gr_path.as_str()));
+
+    println!("ready");
+
     let promote = {
         warp::post()
             .and(warp::path("route"))
@@ -83,29 +86,37 @@ async fn main() {
                 let from = coordinates_graph.nearest(route_request.from.0, route_request.from.1);
                 let to = coordinates_graph.nearest(route_request.to.0, route_request.to.1);
 
-                let new_request = ShortestPathRequest::new(from, to).unwrap();
-                // let start = Instant::now();
-                let pathx = path_finder.get_shortest_path(&new_request).unwrap();
-                // let time = start.elapsed();
+                let request = ShortestPathRequest::new(from, to).unwrap();
+                let start = Instant::now();
+                let pathx = slow_dijkstra.get_shortest_path(&request).unwrap();
+                let time = start.elapsed();
 
-                // let ids = pathx.vertices;
-                // let path = coordinates_graph.convert_path(&ids);
-                // let linestring = Linestring::new(path);
-                // let mut planet = Planet::new();
-                // planet.linestrings.push(linestring);
+                let cost = Some(pathx.weight);
+                let validation = ShortestPathValidation {
+                    request: request.clone(),
+                    weight: cost,
+                };
+                assert!(path_finding_graph
+                    .validate_path(&validation, &Some(pathx.clone()))
+                    .is_ok());
 
-                // println!(
-                //     "route_request: {:>7} -> {:>7}, cost: {:>9}, took: {:>3}ms",
-                //     from,
-                //     to,
-                //     pathx.weight,
-                //     time.as_millis()
-                // );
-                // Response::builder().body(format!("{}", planet.to_geojson_str()))
-                Response::builder().body(format!("{}", "XX"))
+                let ids = pathx.vertices;
+                let path = coordinates_graph.convert_path(&ids);
+                let linestring = Linestring::new(path);
+                let mut planet = Planet::new();
+                planet.linestrings.push(linestring);
+
+                println!(
+                    "route_request: {:>7} -> {:>7}, cost: {:>9}, took: {:>3}ms",
+                    from,
+                    to,
+                    pathx.weight,
+                    time.as_millis()
+                );
+                Response::builder().body(format!("{}", planet.to_geojson_str()))
             })
             .with(cors)
     };
 
-    //    warp::serve(promote).run(([127, 0, 0, 1], 3030)).await;
+    warp::serve(promote).run(([127, 0, 0, 1], 3030)).await;
 }

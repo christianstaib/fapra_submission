@@ -370,6 +370,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5443807d6dff69373d433ab9ef5378ad8df50ca6298caf15de6e52e24aaf54d5"
 
 [[package]]
+name = "fapra_submission"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "clap",
+ "faster_paths",
+ "osm_converter",
+ "serde",
+ "serde_json",
+ "tokio",
+ "warp",
+]
+
+[[package]]
 name = "fast_paths"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -383,7 +397,7 @@ dependencies = [
 [[package]]
 name = "faster_paths"
 version = "0.1.0"
-source = "git+https://github.com/christianstaib/faster_paths.git#b836ef077df4fc02487f86ecd6c48df4ec2f7945"
+source = "git+https://github.com/christianstaib/faster_paths.git#c23a707d211b08ee27806f047f4a48e0113ec3e1"
 dependencies = [
  "ahash",
  "bincode",
@@ -827,20 +841,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "90ed8c1e510134f979dbc4f070f87d4313098b704861a105fe34231c70a3901c"
 
 [[package]]
-name = "main"
-version = "0.1.0"
-dependencies = [
- "bincode",
- "clap",
- "faster_paths",
- "osm_converter",
- "serde",
- "serde_json",
- "tokio",
- "warp",
-]
-
-[[package]]
 name = "matrixmultiply"
 version = "0.1.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1137,7 +1137,7 @@ dependencies = [
 [[package]]
 name = "osm_converter"
 version = "0.1.0"
-source = "git+https://github.com/christianstaib/osm_converter.git#6c93bc3bd9f40f6eb3502305b14fd940714c71e5"
+source = "git+https://github.com/christianstaib/osm_converter.git#300a673e8ec29913dbc03c9ee83d23bed6d87a9b"
 dependencies = [
  "ahash",
  "bincode",
