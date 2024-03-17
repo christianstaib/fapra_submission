@@ -3,10 +3,14 @@ use std::{collections::HashMap, fs::File, io::BufReader, sync::Arc, time::Instan
 use faster_paths::{
     ch::{
         ch_path_finder::ChPathFinder,
-        shortcut_replacer::{slow_shortcut_replacer::SlowShortcutReplacer, ShortcutReplacer},
+        shortcut_replacer::{
+            fast_shortcut_replacer::FastShortcutReplacer,
+            slow_shortcut_replacer::SlowShortcutReplacer, ShortcutReplacer,
+        },
         ContractedGraphInformation,
     },
     graphs::path::{PathFinding, ShortestPathRequest},
+    hl::{hub_graph::HubGraph, hub_graph_path_finder::HubGraphPathFinder},
 };
 use osm_converter::sphere::{
     geometry::{linestring::Linestring, planet::Planet, point::Point},
@@ -31,6 +35,9 @@ struct Args {
     /// Path of .fmi file
     #[arg(short, long)]
     ch_path: String,
+    /// Path of .fmi file
+    #[arg(short, long)]
+    hl_path: String,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -63,11 +70,19 @@ async fn main() {
     let point_grid = Arc::new(point_grid);
     let point_id_map = Arc::new(point_id_map);
 
+    // ch
     let reader = BufReader::new(File::open(args.ch_path).unwrap());
     let ch_information: ContractedGraphInformation = bincode::deserialize_from(reader).unwrap();
     let shortcut_replacer: Box<dyn ShortcutReplacer + Send + Sync> =
         Box::new(SlowShortcutReplacer::new(&ch_information.shortcuts));
     let ch_path_finder = ChPathFinder::new(ch_information.ch_graph, shortcut_replacer);
+
+    // hl
+    let fast_shortcut_replacer: Box<dyn ShortcutReplacer> =
+        Box::new(FastShortcutReplacer::new(&ch_information.shortcuts));
+    let reader = BufReader::new(File::open(args.hl_path).unwrap());
+    let hl: HubGraph = bincode::deserialize_from(reader).unwrap();
+    let _hl_path_finder = HubGraphPathFinder::new(hl, fast_shortcut_replacer);
 
     let path_finder: Arc<Box<dyn PathFinding>> = Arc::new(Box::new(ch_path_finder));
 
