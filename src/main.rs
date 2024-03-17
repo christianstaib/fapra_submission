@@ -1,10 +1,4 @@
-use std::{
-    collections::HashMap,
-    fs::File,
-    io::BufReader,
-    sync::{Arc, Mutex},
-    time::Instant,
-};
+use std::{collections::HashMap, fs::File, io::BufReader, sync::Arc, time::Instant};
 
 use faster_paths::{
     ch::{
@@ -12,17 +6,12 @@ use faster_paths::{
         shortcut_replacer::{slow_shortcut_replacer::SlowShortcutReplacer, ShortcutReplacer},
         ContractedGraphInformation,
     },
-    graphs::{
-        graph::Graph,
-        graph_factory::GraphFactory,
-        path::{PathFinding, ShortestPathRequest, ShortestPathValidation},
-    },
-    simple_algorithms::slow_dijkstra::SlowDijkstra,
+    graphs::path::{PathFinding, ShortestPathRequest},
 };
 use osm_converter::sphere::{
     geometry::{linestring::Linestring, planet::Planet, point::Point},
     graph::graph::Fmi,
-    spatial_partition::point_spatial_partition::{self, PointSpatialPartition},
+    spatial_partition::point_spatial_partition::PointSpatialPartition,
 };
 use serde::{Deserialize, Serialize};
 use warp::{http::Response, Filter};
@@ -74,19 +63,13 @@ async fn main() {
     let point_grid = Arc::new(point_grid);
     let point_id_map = Arc::new(point_id_map);
 
-    let path_finding_graph = GraphFactory::from_gr_file(args.gr_path.as_str());
-
     let reader = BufReader::new(File::open(args.ch_path).unwrap());
     let ch_information: ContractedGraphInformation = bincode::deserialize_from(reader).unwrap();
     let shortcut_replacer: Box<dyn ShortcutReplacer + Send + Sync> =
         Box::new(SlowShortcutReplacer::new(&ch_information.shortcuts));
     let ch_path_finder = ChPathFinder::new(ch_information.ch_graph, shortcut_replacer);
-    let ch_path_finder: Arc<Box<dyn PathFinding>> = Arc::new(Box::new(ch_path_finder));
 
-    let slow_dijkstra = SlowDijkstra::new(path_finding_graph);
-    let slow_dijkstra: Arc<Box<dyn PathFinding>> = Arc::new(Box::new(slow_dijkstra));
-
-    let path_finding_graph = Arc::new(GraphFactory::from_gr_file(args.gr_path.as_str()));
+    let path_finder: Arc<Box<dyn PathFinding>> = Arc::new(Box::new(ch_path_finder));
 
     println!("ready");
 
@@ -95,7 +78,6 @@ async fn main() {
             .and(warp::path("route"))
             .and(warp::body::json())
             .map(move |route_request: RouteRequest| {
-                let start = Instant::now();
                 let from_point = Point::from_coordinate(route_request.from.1, route_request.from.0);
                 let nearest_from_proint = point_grid.get_nearest(&from_point).unwrap();
                 let from = *point_id_map.get(&nearest_from_proint).unwrap() as u32;
@@ -103,21 +85,11 @@ async fn main() {
                 let to_point = Point::from_coordinate(route_request.to.1, route_request.to.0);
                 let nearest_to_proint = point_grid.get_nearest(&to_point).unwrap();
                 let to = *point_id_map.get(&nearest_to_proint).unwrap() as u32;
-                println!("finding nearest took {:?}", start.elapsed());
 
                 let request = ShortestPathRequest::new(from, to).unwrap();
                 let start = Instant::now();
-                let pathx = ch_path_finder.get_shortest_path(&request).unwrap();
+                let pathx = path_finder.get_shortest_path(&request).unwrap();
                 let time = start.elapsed();
-
-                let cost = Some(pathx.weight);
-                let validation = ShortestPathValidation {
-                    request: request.clone(),
-                    weight: cost,
-                };
-                assert!(path_finding_graph
-                    .validate_path(&validation, &Some(pathx.clone()))
-                    .is_ok());
 
                 let ids = pathx.vertices;
                 let path = coordinates_graph.convert_path(&ids);
