@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     fs::File,
     io::BufReader,
     sync::{Arc, Mutex},
@@ -19,8 +20,9 @@ use faster_paths::{
     simple_algorithms::slow_dijkstra::SlowDijkstra,
 };
 use osm_converter::sphere::{
-    geometry::{linestring::Linestring, planet::Planet},
+    geometry::{linestring::Linestring, planet::Planet, point::Point},
     graph::graph::Fmi,
+    spatial_partition::point_spatial_partition::{self, PointSpatialPartition},
 };
 use serde::{Deserialize, Serialize};
 use warp::{http::Response, Filter};
@@ -62,6 +64,16 @@ async fn main() {
         args.co_path.as_str(),
     ));
 
+    let mut point_grid = PointSpatialPartition::new_root(10);
+    point_grid.add_points(&coordinates_graph.points);
+
+    let mut point_id_map = HashMap::new();
+    for (id, point) in coordinates_graph.points.iter().cloned().enumerate() {
+        point_id_map.insert(point, id as usize);
+    }
+    let point_grid = Arc::new(point_grid);
+    let point_id_map = Arc::new(point_id_map);
+
     let path_finding_graph = GraphFactory::from_gr_file(args.gr_path.as_str());
 
     let reader = BufReader::new(File::open(args.ch_path).unwrap());
@@ -83,12 +95,19 @@ async fn main() {
             .and(warp::path("route"))
             .and(warp::body::json())
             .map(move |route_request: RouteRequest| {
-                let from = coordinates_graph.nearest(route_request.from.0, route_request.from.1);
-                let to = coordinates_graph.nearest(route_request.to.0, route_request.to.1);
+                let start = Instant::now();
+                let from_point = Point::from_coordinate(route_request.from.1, route_request.from.0);
+                let nearest_from_proint = point_grid.get_nearest(&from_point).unwrap();
+                let from = *point_id_map.get(&nearest_from_proint).unwrap() as u32;
+
+                let to_point = Point::from_coordinate(route_request.to.1, route_request.to.0);
+                let nearest_to_proint = point_grid.get_nearest(&to_point).unwrap();
+                let to = *point_id_map.get(&nearest_to_proint).unwrap() as u32;
+                println!("finding nearest took {:?}", start.elapsed());
 
                 let request = ShortestPathRequest::new(from, to).unwrap();
                 let start = Instant::now();
-                let pathx = slow_dijkstra.get_shortest_path(&request).unwrap();
+                let pathx = ch_path_finder.get_shortest_path(&request).unwrap();
                 let time = start.elapsed();
 
                 let cost = Some(pathx.weight);
